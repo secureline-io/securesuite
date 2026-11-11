@@ -61,7 +61,7 @@ the tool it is modelled on. The roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md)
 A **Rust engine** does the heavy lifting — TLS MITM proxying, hostile-input
 parsing, storage, the scan pipeline — and exposes a local **HTTP + WebSocket
 API**. A **web console** (and any CLI or automation) drives the engine over that
-one API, so a headless/server mode comes for free. Full detail in
+one API, so headless use on the same machine comes for free. Full detail in
 [docs/architecture.md](docs/architecture.md).
 
 - `engine/crates/securesuite` — the proxy, console, API, store, and tools (one binary).

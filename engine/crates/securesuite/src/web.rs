@@ -67,32 +67,44 @@ pub fn router(state: WebState) -> Router {
         .with_state(state)
 }
 
-/// The console holds captured traffic and has no login, so it answers only
-/// callers that address it by a loopback name: a foreign `Host` is DNS
-/// rebinding, a foreign `Origin` is another site's page (browsers send `Origin`
-/// on every WebSocket upgrade and cross-site request).
+/// The console holds captured traffic and has no login, so it answers only a
+/// caller that addresses it by a loopback name (a foreign `Host` is DNS
+/// rebinding) and, when the browser states an `Origin`, only the console's own
+/// page. Other loopback ports serve other apps, so same machine is not enough.
 // shortcut: stops browser-borne callers only, not other local processes; add a per-launch token before the API can listen off loopback.
 fn is_local_request(host: Option<&str>, origin: Option<&str>) -> bool {
-    let loopback = |h: Option<&str>| matches!(h, Some("127.0.0.1" | "localhost" | "[::1]"));
-    let host_ok = host
-        .and_then(|h| h.parse::<Authority>().ok())
-        .is_some_and(|a| loopback(Some(a.host())));
-    let origin_ok =
-        origin.is_none_or(|o| o.parse::<Uri>().ok().is_some_and(|u| loopback(u.host())));
-    host_ok && origin_ok
+    let Some(host) = host else { return false };
+    let loopback = host
+        .parse::<Authority>()
+        .is_ok_and(|a| matches!(a.host(), "127.0.0.1" | "localhost" | "[::1]"));
+    let same_origin = origin.is_none_or(|o| {
+        o.parse::<Uri>().is_ok_and(|u| {
+            u.authority()
+                .is_some_and(|a| a.as_str().eq_ignore_ascii_case(host))
+        })
+    });
+    loopback && same_origin
 }
 
 async fn local_only(req: Request, next: Next) -> Response {
     let local = {
         let headers = req.headers();
-        let value = |name: header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
+        // A header that is present but unreadable is foreign, never absent.
+        let value = |name: header::HeaderName| headers.get(name).map(|v| v.to_str().unwrap_or(""));
         is_local_request(value(header::HOST), value(header::ORIGIN))
     };
-    if local {
-        next.run(req).await
-    } else {
-        StatusCode::FORBIDDEN.into_response()
+    if !local {
+        let hint =
+            "SecureSuite console: open it as http://127.0.0.1:<port> or http://localhost:<port>\n";
+        return (StatusCode::FORBIDDEN, hint).into_response();
     }
+    let mut res = next.run(req).await;
+    // No other site may frame the console (click-hijacking).
+    res.headers_mut().insert(
+        header::X_FRAME_OPTIONS,
+        header::HeaderValue::from_static("DENY"),
+    );
+    res
 }
 
 async fn index() -> Html<&'static str> {
@@ -1306,6 +1318,52 @@ mod tests {
         ];
         assert_eq!(status(url.clone(), &upgrade).await, 101, "the console");
         upgrade[4] = ("origin", "http://evil.example");
-        assert_eq!(status(url, &upgrade).await, 403, "another site");
+        assert_eq!(status(url.clone(), &upgrade).await, 403, "another site");
+        // WebSockets skip the same-origin policy, so a page on another loopback
+        // port (a dev server, the practice lab) must be refused too.
+        upgrade[4] = ("origin", "http://127.0.0.1:1");
+        assert_eq!(status(url, &upgrade).await, 403, "another local app");
+    }
+
+    #[test]
+    fn is_local_request_table() {
+        for (host, origin, want) in [
+            (Some("127.0.0.1:8081"), None, true),
+            (Some("localhost:8081"), Some("http://localhost:8081"), true),
+            (Some("[::1]:8081"), Some("http://[::1]:8081"), true),
+            (None, None, false),
+            (Some(""), None, false),
+            (Some("localhost.evil.example"), None, false),
+            (Some("127.0.0.1.evil.example:8081"), None, false),
+            (Some("127.0.0.1:8081"), Some("http://127.0.0.1:1"), false),
+            (Some("127.0.0.1:8081"), Some("http://localhost:8081"), false),
+            (Some("127.0.0.1:8081"), Some("null"), false),
+            (Some("127.0.0.1:8081"), Some(""), false),
+        ] {
+            assert_eq!(is_local_request(host, origin), want, "{host:?} {origin:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn console_fails_closed_and_forbids_framing() {
+        let addr = spawn_console().await;
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let get = |origin: Option<&'static [u8]>| {
+            let mut req = client.get(format!("http://{addr}/api/info"));
+            if let Some(bytes) = origin {
+                req = req.header("origin", header::HeaderValue::from_bytes(bytes).unwrap());
+            }
+            req.send()
+        };
+        // An Origin that is present but unreadable is foreign, not absent.
+        assert_eq!(
+            get(Some(b"http://evil.example\xff"))
+                .await
+                .unwrap()
+                .status(),
+            403
+        );
+        let ok = get(None).await.unwrap();
+        assert_eq!(ok.headers().get("x-frame-options").unwrap(), "DENY");
     }
 }
