@@ -1,0 +1,18 @@
+# Workspace manifest for the SecureSuite engine.
+# Platform crates are AGPL-3.0-or-later (see ../LICENSE).
+[workspace]
+resolver = "2"
+members = ["engine/crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["SecureSuite Contributors"]
+repository = "https://github.com/securesuite-project/securesuite"
+rust-version = "1.86"
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

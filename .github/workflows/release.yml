@@ -1,0 +1,50 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: ./packaging/build-macos-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: securesuite-macos-arm64
+          path: |
+            dist/*.dmg
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build deps (aws-lc-rs, .deb)
+        run: sudo apt-get update && sudo apt-get install -y cmake nasm dpkg-dev
+      - run: chmod +x packaging/build-linux.sh && ./packaging/build-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: securesuite-linux-x86_64
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: securesuite-windows-x64
+          path: |
+            dist/*.zip
+            dist/*setup.exe

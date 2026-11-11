@@ -1,0 +1,34 @@
+# SecureSuite practice lab — deliberately vulnerable targets, LOCAL use only.
+#
+# ⚠️  These images are intentionally insecure. Run them only on an isolated
+#     local machine and NEVER expose these ports to an untrusted network.
+#     Only ever point SecureSuite at systems you are authorized to test.
+#
+#   docker compose up -d      # start
+#   docker compose down       # stop & remove
+#
+#   OWASP Juice Shop  http://localhost:3000
+#   DVWA              http://localhost:8080
+#   httpbin           http://localhost:8081   (request/encoding conformance)
+
+services:
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: sl-lab-juiceshop
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  dvwa:
+    image: ghcr.io/digininja/dvwa:latest
+    container_name: sl-lab-dvwa
+    ports:
+      - "127.0.0.1:8080:80"
+    restart: unless-stopped
+
+  httpbin:
+    image: kennethreitz/httpbin
+    container_name: sl-lab-httpbin
+    ports:
+      - "127.0.0.1:8081:80"
+    restart: unless-stopped

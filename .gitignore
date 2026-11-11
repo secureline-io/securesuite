@@ -1,0 +1,27 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Node / UI
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+
+# Local runtime data & secrets — never commit
+*.log
+.env
+.env.*
+/data/
+*.securesuite
+
+# CA / key material — NEVER commit private keys
+*.key
+*.pem
+*.p12
+/ca/

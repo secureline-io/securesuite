@@ -1,0 +1,17 @@
+[package]
+name = "ss-ca"
+description = "SecureSuite internal certificate authority: persistent root CA + cached per-host leaf minting for TLS interception."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rcgen = { version = "0.14.7", features = ["pem", "x509-parser"] }
+thiserror = "2.0.21"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+x509-parser = "0.18.1"
