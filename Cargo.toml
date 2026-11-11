@@ -9,7 +9,7 @@ version = "0.0.1"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 authors = ["SecureSuite Contributors"]
-repository = "https://github.com/securesuite-project/securesuite"
+repository = "https://github.com/secureline-io/securesuite"
 rust-version = "1.86"
 
 [profile.release]

@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{ConnectInfo, Path, Request, State};
-use axum::http::{header, StatusCode};
+use axum::http::uri::Authority;
+use axum::http::{header, StatusCode, Uri};
+use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -61,7 +63,36 @@ pub fn router(state: WebState) -> Router {
         )
         .route("/api/ws/intercept/queue", get(ws_intercept_queue))
         .route("/api/ws/intercept/resolve", post(ws_resolve))
+        .layer(middleware::from_fn(local_only))
         .with_state(state)
+}
+
+/// The console holds captured traffic and has no login, so it answers only
+/// callers that address it by a loopback name: a foreign `Host` is DNS
+/// rebinding, a foreign `Origin` is another site's page (browsers send `Origin`
+/// on every WebSocket upgrade and cross-site request).
+// shortcut: stops browser-borne callers only, not other local processes; add a per-launch token before the API can listen off loopback.
+fn is_local_request(host: Option<&str>, origin: Option<&str>) -> bool {
+    let loopback = |h: Option<&str>| matches!(h, Some("127.0.0.1" | "localhost" | "[::1]"));
+    let host_ok = host
+        .and_then(|h| h.parse::<Authority>().ok())
+        .is_some_and(|a| loopback(Some(a.host())));
+    let origin_ok =
+        origin.is_none_or(|o| o.parse::<Uri>().ok().is_some_and(|u| loopback(u.host())));
+    host_ok && origin_ok
+}
+
+async fn local_only(req: Request, next: Next) -> Response {
+    let local = {
+        let headers = req.headers();
+        let value = |name: header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
+        is_local_request(value(header::HOST), value(header::ORIGIN))
+    };
+    if local {
+        next.run(req).await
+    } else {
+        StatusCode::FORBIDDEN.into_response()
+    }
 }
 
 async fn index() -> Html<&'static str> {
@@ -1203,5 +1234,78 @@ mod tests {
         let drop = r#"{"hold_id":4,"action":"drop"}"#;
         let r: ResolveReq = serde_json::from_str(drop).expect("header-less body must parse");
         assert!(r.headers.is_empty());
+    }
+
+    // Regression: the console API holds captured traffic, so it must answer only
+    // callers that address it by a loopback name. Before the guard a foreign
+    // `Host` (DNS rebinding) or `Origin` (any web page) was served like the console.
+
+    async fn spawn_console() -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = router(WebState {
+            store: Arc::new(Store::new()),
+            ca_pem: String::new(),
+            client: reqwest::Client::new(),
+            proxy_port: 0,
+            oast_port: 0,
+        });
+        tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await });
+        addr
+    }
+
+    async fn status(url: String, headers: &[(&str, &str)]) -> u16 {
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let mut req = client.get(url);
+        for (name, value) in headers {
+            req = req.header(*name, *value);
+        }
+        req.send().await.unwrap().status().as_u16()
+    }
+
+    #[tokio::test]
+    async fn console_api_rejects_foreign_host_and_origin() {
+        let addr = spawn_console().await;
+        let url = format!("http://{addr}/api/info");
+        let own_origin = format!("http://{addr}");
+
+        assert_eq!(status(url.clone(), &[]).await, 200, "local client");
+        assert_eq!(
+            status(url.clone(), &[("origin", own_origin.as_str())]).await,
+            200,
+            "the console itself"
+        );
+        assert_eq!(
+            status(url.clone(), &[("host", "evil.example")]).await,
+            403,
+            "foreign Host"
+        );
+        assert_eq!(
+            status(url.clone(), &[("origin", "http://evil.example")]).await,
+            403,
+            "foreign Origin"
+        );
+        assert_eq!(
+            status(url, &[("origin", "null")]).await,
+            403,
+            "opaque Origin"
+        );
+    }
+
+    #[tokio::test]
+    async fn live_feed_websocket_rejects_cross_site_upgrade() {
+        let addr = spawn_console().await;
+        let url = format!("http://{addr}/api/ws");
+        let own_origin = format!("http://{addr}");
+        let mut upgrade = [
+            ("connection", "Upgrade"),
+            ("upgrade", "websocket"),
+            ("sec-websocket-version", "13"),
+            ("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="),
+            ("origin", own_origin.as_str()),
+        ];
+        assert_eq!(status(url.clone(), &upgrade).await, 101, "the console");
+        upgrade[4] = ("origin", "http://evil.example");
+        assert_eq!(status(url, &upgrade).await, 403, "another site");
     }
 }

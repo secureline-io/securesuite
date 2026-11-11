@@ -61,7 +61,7 @@ Repeater, Intruder, and Scanner are *producers* of exchanges that flow through t
 
 - REST for queries and commands (`GET /exchanges`, `POST /repeater/send`, `PUT /scope`, `POST /intruder/attacks`, ...).
 - One WebSocket for the live event stream (new traffic, intercept prompts, scan progress/issues).
-- Bound to loopback by default, token-authenticated, so the engine can also run on a remote host with the UI/CLI attached.
+- Bound to loopback. A request is served only when its `Host` and `Origin` name a loopback address, which blocks DNS rebinding and other sites' pages. There is no token authentication yet, so the API must not be exposed beyond loopback.
 
 ## Extensions (`ss-ext` + `ext-sdk`)
 

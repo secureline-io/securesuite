@@ -13,8 +13,8 @@
 - **Surface:** intercepting HTTP/HTTPS/WebSocket proxy + **live web console**
   (`http://127.0.0.1:8081`) + local **HTTP+WS JSON API** (headless/CLI falls out
   for free) + persistent **SQLite** history/scope/rules/issues + per-host CA.
-- **Ports:** proxy `8086` · UI `8081` · OAST `8082` (all env-configurable; we
-  never touch Burp's `8080`).
+- **Ports:** proxy `8080` · UI `8081` · OAST `8082` (all env-configurable; move
+  the proxy port if another proxy such as Burp already holds `8080`).
 - **Packaging:** macOS `.dmg`, Windows `.zip`, Linux `.deb`/`.tar.gz`, all
   branded with the supplied logo kit.
 

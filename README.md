@@ -42,7 +42,9 @@ still growing. Honest status:
   **Sequencer**.
 - **Target** site map + scope + content discovery.
 - **Passive scanner** (missing headers, cookie flags, info leaks) → Issues.
-- **Unified Logger**, HTTP history with search/filter/export, all SQLite-persisted.
+- **Unified Logger** and HTTP history with search/filter/export. History, scope,
+  rules and issues persist in SQLite; the Logger, WebSocket log and OAST
+  interactions are in-memory.
 - Local **HTTP + WebSocket API** — headless and CI-friendly by design.
 
 **Early / in progress**
@@ -63,11 +65,12 @@ one API, so a headless/server mode comes for free. Full detail in
 [docs/architecture.md](docs/architecture.md).
 
 - `engine/crates/securesuite` — the proxy, console, API, store, and tools (one binary).
-- `engine/crates/ss-ca` — root CA + per-host leaf certificate minting (TLS MITM).
+- `engine/crates/ss-ca` — tested CA crate (root CA + per-host leaf minting). Not
+  wired in yet; the engine currently uses an inline CA.
 - `ext-sdk/` — the Apache-2.0 extension SDK (language-agnostic HTTP webhooks).
 
 Stack: Rust, [hudsucker](https://github.com/omjadas/hudsucker) (MITM core),
-axum, rustls / rcgen / aws-lc, bundled SQLite. Pure Rust crypto — no OpenSSL, no JVM.
+axum, rustls / rcgen / aws-lc, bundled SQLite. No OpenSSL, no JVM.
 
 ## Build & run
 
@@ -81,12 +84,13 @@ cargo build -p securesuite
 ./target/debug/securesuite
 ```
 
-Then point your browser or system proxy at `127.0.0.1:8086` and trust the
+Then point your browser or system proxy at `127.0.0.1:8080` and trust the
 SecureSuite CA (console → Download CA) to intercept HTTPS and `wss://`. The
 console starts empty and fills as traffic routes through it.
 
-Ports are environment-configurable: `SECURESUITE_PROXY_PORT` (8086),
-`SECURESUITE_UI_PORT` (8081), `SECURESUITE_OAST_PORT` (8082).
+Ports are environment-configurable: `SECURESUITE_PROXY_PORT` (8080),
+`SECURESUITE_UI_PORT` (8081), `SECURESUITE_OAST_PORT` (8082). If another proxy
+such as Burp already uses 8080, set `SECURESUITE_PROXY_PORT` to a free port.
 
 ### Practice lab
 
@@ -94,6 +98,13 @@ Deliberately vulnerable targets for local testing only:
 
 ```bash
 cd lab && docker compose up -d   # juice-shop, dvwa, httpbin
+```
+
+The lab publishes `127.0.0.1:8080` and `127.0.0.1:8081`, the engine's default
+proxy and console ports. When using the lab, start the engine on other ports:
+
+```bash
+SECURESUITE_PROXY_PORT=8086 SECURESUITE_UI_PORT=8087 ./target/debug/securesuite
 ```
 
 ## Contributing
