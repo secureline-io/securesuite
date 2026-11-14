@@ -8,7 +8,7 @@
 <style>
   :root {
     --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --border:#2b333d;
-    --fg:#d7dde5; --muted:#8b97a5; --accent:#2dd4bf; --accent2:#38bdf8; --brand:#E06639;
+    --fg:#d7dde5; --muted:#8b97a5; --accent:#E06639; --accent2:#38bdf8; --brand:#E06639;
     --g:#4ade80; --y:#facc15; --o:#fb923c; --r:#f87171;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
@@ -16,9 +16,10 @@
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
     font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; font-size:13px; }
   #app { display:flex; flex-direction:column; height:100vh; }
-  header { display:flex; align-items:center; gap:14px; padding:8px 14px;
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:8px 14px;
     background:linear-gradient(90deg,#10171f,#141c26); border-bottom:1px solid var(--border); }
-  .brand { font-weight:700; font-size:16px; letter-spacing:.3px; }
+  .brand { font-weight:700; font-size:16px; letter-spacing:.3px; white-space:nowrap; }
+  header button, header .sub { white-space:nowrap; }
   .brand .shield { display:inline-block; width:1.15em; height:1.15em; vertical-align:-0.22em;
     background:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSIwIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxMi44IiBmaWxsPSIjRTA2NjM5Ii8+PHBvbHlnb24gcG9pbnRzPSIyOS40NjIsNy44MzcgMzQuNDkzLDcuODM3IDM0LjQ5MywxNC4zMDUgNDYuNzU0LDI5LjQ0MCAzNC40OTMsMjkuNDQwIDM0LjQ5MywzOS42MzUgMjcuNzExLDM5LjYzNSAzNC40OTMsNDguMDc5IDM0LjQ5Myw1Ni4xNjMgMjkuNDYyLDU2LjE2MyAyOS40NjIsNDkuNjk1IDE3LjI0NiwzNC41NjAgMjkuNDYyLDM0LjU2MCAyOS40NjIsMjQuMzY1IDM2LjI4OSwyNC4zNjUgMjkuNDYyLDE1LjkyMSIgZmlsbD0iI0ZGRkZGRiIvPjwvc3ZnPgo=') center/contain no-repeat; }
   .brand .wm-suite { color:var(--brand); }
@@ -31,7 +32,7 @@
   button { background:var(--panel2); color:var(--fg); border:1px solid var(--border);
     padding:5px 11px; border-radius:6px; cursor:pointer; font-size:12px; }
   button:hover { border-color:var(--accent); color:#fff; }
-  button.accent { background:var(--accent); color:#06231f; border-color:var(--accent); font-weight:600; }
+  button.accent { background:var(--accent); color:#17181C; border-color:var(--accent); font-weight:600; }
   button.warn { border-color:var(--r); color:var(--r); }
   #issuesBtn .badge { display:none; background:var(--r); color:#fff; border-radius:9px; padding:0 6px; margin-left:5px; font-size:10px; font-weight:700; }
   #issuesBtn.has .badge { display:inline-block; }

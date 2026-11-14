@@ -1,4 +1,4 @@
-# SecuritySuite: logo kit
+# SecureSuite: logo kit
 
 Mark: orange rounded tile with a white stepped lightning bolt, as supplied. The bolt and tile were traced from a ~85 px screenshot of the icon and rebuilt as clean vector geometry (see Limits).
 
@@ -55,4 +55,4 @@ Wordmark: Inter Bold, tracking -2 at 170 px (about -1.2%), "Security" in Ink (Wh
 - Flat Orange only. The screenshot showed a slight lighter highlight at the top edge, which I treated as a screenshot artefact and not part of the logo.
 - Corner radius is 20% of tile size, matched by eye to the screenshot. The bolt is centred in the tile (it sat about 1% right of centre in the screenshot, within tracing error).
 - The bolt's strokes are about 1 px at 16 px, so it is crude there. The 16 to 32 px icons use a bolt enlarged 20% to compensate.
-- No trademark clearance was done. INFERRED: "SecuritySuite" is a descriptive name for a security product and likely hard to protect or to register as a word mark, and I have not checked for similar marks. Run a search before committing.
+- No trademark clearance was done. INFERRED: "SecureSuite" is a descriptive name for a security product and likely hard to protect or to register as a word mark, and I have not checked for similar marks. Run a search before committing.

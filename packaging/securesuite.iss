@@ -15,6 +15,8 @@ OutputBaseFilename=SecureSuite-{#AppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
+SetupIconFile=brand\securesuite.ico
+UninstallDisplayIcon={app}\securesuite.exe
 
 [Files]
 Source: "..\target\release\securesuite.exe"; DestDir: "{app}"; Flags: ignoreversion
