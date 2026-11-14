@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureSuite — open-source web security testing</title>
+<meta name="description" content="SecureSuite is a free, open-source (AGPL) web application security testing toolkit: an intercepting proxy, Repeater, Intruder, scanner and OAST server in one ~11 MB native binary.">
+<meta property="og:title" content="SecureSuite — open-source web security testing">
+<meta property="og:description" content="Intercepting proxy, manual testing toolkit, scanner and OAST server in one ~11 MB native binary. Free and AGPL.">
+<meta property="og:url" content="https://securesuite.secureline.in/">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 4 7v8c0 7.5 5.1 13.4 12 15 6.9-1.6 12-7.5 12-15V7z' fill='%2322c55e'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f7f8f7; --surface: #ffffff; --text: #111614; --muted: #56605b;
+    --line: #dde3df; --accent: #15803d; --accent-ink: #ffffff; --code: #eef2ef;
+    --warn-bg: #fff7e6; --warn-line: #f0c36d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f0d; --surface: #121815; --text: #e7ece9; --muted: #98a39d;
+      --line: #24302a; --accent: #22c55e; --accent-ink: #04140a; --code: #18201c;
+      --warn-bg: #1d1808; --warn-line: #6b5414;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  a:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  code { background: var(--code); padding: .1em .35em; border-radius: 4px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  header.top { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+  .brand { display: flex; gap: 10px; align-items: center; font-weight: 700; color: var(--text); text-decoration: none; }
+  .brand svg { width: 26px; height: 26px; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 18px; font-size: .95rem; }
+  nav a:hover { color: var(--text); }
+  .hero { padding: 56px 0 40px; }
+  .tag { display: inline-block; font-size: .8rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; margin-bottom: 18px; }
+  h1 { font-size: clamp(2rem, 5.5vw, 3.2rem); line-height: 1.1; margin: 0 0 18px; letter-spacing: -.02em; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 640px; margin: 0 0 28px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-block; padding: 11px 18px; border-radius: 8px; text-decoration: none; font-weight: 600; border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 44px 0 0; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat b { display: block; font-size: 1.35rem; }
+  .stat span { color: var(--muted); font-size: .9rem; }
+  section { padding: 44px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 1.6rem; margin: 0 0 8px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .95rem; }
+  .dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .dl .card a.btn { margin-top: 12px; }
+  .dl small { color: var(--muted); display: block; margin-top: 8px; }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ol.steps li { counter-increment: s; position: relative; padding: 14px 16px 14px 56px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 16px; top: 13px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 700; text-align: center; line-height: 26px; font-size: .9rem; }
+  .note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 14px 16px; margin-top: 18px; font-size: .95rem; }
+  .note p { margin: 4px 0; }
+  ul.plain { margin: 0; padding-left: 20px; }
+  ul.plain li { margin: 4px 0; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: .9rem; }
+  footer p { margin: 4px 0; }
+  @media (max-width: 560px) { nav a:not(.gh) { display: none; } .hero { padding-top: 32px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#" aria-label="SecureSuite home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 4 7v8c0 7.5 5.1 13.4 12 15 6.9-1.6 12-7.5 12-15V7z" fill="var(--accent)"/><path d="m11 16 3.5 3.5L21 13" stroke="var(--accent-ink)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      SecureSuite
+    </a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#download">Download</a>
+      <a href="#setup">Setup</a>
+      <a class="gh" href="https://github.com/secureline-io/securesuite">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="tag">v0.1.0 · AGPL-3.0 · open source</span>
+      <h1>Web security testing,<br>kept open.</h1>
+      <p class="lede">An intercepting proxy, the full manual testing workflow, a scanner and an out-of-band server in one small native binary. Free, scriptable, and owned by the community.</p>
+      <div class="cta">
+        <a class="btn primary" href="#download">Download v0.1.0</a>
+        <a class="btn" href="https://github.com/secureline-io/securesuite">View source on GitHub</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>~11 MB</b><span>single native binary</span></div>
+        <div class="stat"><b>~18 ms</b><span>warm start, no JVM</span></div>
+        <div class="stat"><b>API-first</b><span>HTTP + WebSocket, CI-ready</span></div>
+        <div class="stat"><b>$0</b><span>no paid tier</span></div>
+      </div>
+    </div>
+
+    <section id="features" aria-labelledby="f-h">
+      <h2 id="f-h">What's inside</h2>
+      <p class="sub">Everything runs locally. The console and any script drive the same engine over one API.</p>
+      <div class="grid">
+        <div class="card"><h3>Intercepting proxy</h3><p>HTTP, HTTPS and WebSocket with its own certificate authority. Hold, edit, forward or drop requests and responses; Match &amp; Replace rules.</p></div>
+        <div class="card"><h3>Repeater &amp; Intruder</h3><p>Edit and resend any request. Intruder supports sniper, battering-ram, pitchfork and cluster-bomb attacks.</p></div>
+        <div class="card"><h3>Decoder, Comparer, Sequencer</h3><p>Encode and decode, diff two responses, and measure how random session tokens really are.</p></div>
+        <div class="card"><h3>Target &amp; scope</h3><p>A site map built from traffic, scope control, and content discovery.</p></div>
+        <div class="card"><h3>Scanner</h3><p>Passive checks for headers, cookie flags and information leaks. The active scanner covers SQL injection and reflected XSS today, with more checks coming.</p></div>
+        <div class="card"><h3>Out-of-band (OAST)</h3><p>A built-in callback listener for catching blind vulnerabilities. HTTP today; DNS and SMTP are on the roadmap.</p></div>
+      </div>
+    </section>
+
+    <section id="download" aria-labelledby="d-h">
+      <h2 id="d-h">Download</h2>
+      <p class="sub">Version 0.1.0. Built by GitHub Actions from the public source, with SHA-256 checksums.</p>
+      <!-- shortcut: links are pinned to v0.1.0 file names; update them on each release. -->
+      <div class="dl">
+        <div class="card">
+          <h3>macOS</h3><p>Apple silicon (M1 and later)</p>
+          <a class="btn primary" href="https://github.com/secureline-io/securesuite/releases/download/v0.1.0/SecureSuite.dmg">SecureSuite.dmg</a>
+          <small>Intel Macs: build from source for now.</small>
+        </div>
+        <div class="card">
+          <h3>Windows</h3><p>64-bit installer or portable zip</p>
+          <a class="btn primary" href="https://github.com/secureline-io/securesuite/releases/download/v0.1.0/SecureSuite-0.1.0-setup.exe">Installer (.exe)</a>
+          <small><a href="https://github.com/secureline-io/securesuite/releases/download/v0.1.0/securesuite-0.1.0-windows-x64.zip">Portable .zip</a></small>
+        </div>
+        <div class="card">
+          <h3>Linux</h3><p>x86-64 Debian package or tarball</p>
+          <a class="btn primary" href="https://github.com/secureline-io/securesuite/releases/download/v0.1.0/securesuite_0.1.0_amd64.deb">.deb package</a>
+          <small><a href="https://github.com/secureline-io/securesuite/releases/download/v0.1.0/securesuite-0.1.0-linux-x86_64.tar.gz">.tar.gz archive</a></small>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:16px"><a href="https://github.com/secureline-io/securesuite/releases/download/v0.1.0/SHA256SUMS">SHA256SUMS</a> · <a href="https://github.com/secureline-io/securesuite/releases">All releases</a></p>
+      <div class="note" role="note">
+        <p><b>The builds are not code-signed yet</b>, so your system will warn you the first time.</p>
+        <p><b>macOS:</b> right-click SecureSuite in Applications, choose <b>Open</b>, then <b>Open</b> again.</p>
+        <p><b>Windows:</b> on the SmartScreen prompt, click <b>More info</b>, then <b>Run anyway</b>.</p>
+      </div>
+    </section>
+
+    <section id="setup" aria-labelledby="s-h">
+      <h2 id="s-h">Get started in five steps</h2>
+      <p class="sub">About five minutes, start to first intercepted request.</p>
+      <ol class="steps">
+        <li><b>Install and open SecureSuite.</b> The console opens in your browser at <code>http://127.0.0.1:8081</code>.</li>
+        <li><b>Point your browser at the proxy.</b> Set its HTTP and HTTPS proxy to <code>127.0.0.1:8080</code>. A separate browser profile keeps your normal browsing out of it.</li>
+        <li><b>Trust the SecureSuite CA.</b> Click <b>Download CA</b> in the console and add it to that browser's trusted certificates, so HTTPS can be inspected.</li>
+        <li><b>Browse your target.</b> Requests appear in the history and site map as you go. Set the scope to the hosts you are allowed to test.</li>
+        <li><b>Test.</b> Turn on intercept to edit traffic live, or send any request to Repeater, Intruder or the scanner.</li>
+      </ol>
+      <div class="note" role="note">
+        <p><b>Port 8080 already taken</b> (for example by another proxy)? Create <code>~/.securesuite/env</code> containing <code>SECURESUITE_PROXY_PORT=8086</code> and <code>SECURESUITE_UI_PORT=8087</code>, then reopen the app.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="w-h">
+      <div class="two">
+        <div>
+          <h2 id="w-h">Why SecureSuite</h2>
+          <ul class="plain">
+            <li><b>No paywall.</b> Scanner, OAST, project files and every Intruder mode are free.</li>
+            <li><b>Small and fast.</b> Rust, pure-Rust TLS, no JVM, tens of megabytes of memory.</li>
+            <li><b>Scriptable.</b> A local HTTP and WebSocket API, so the same engine runs headless in CI.</li>
+            <li><b>Extend in any language</b> over HTTP webhooks.</li>
+            <li><b>Clean-room and auditable.</b> Built from public specifications, with provenance logged in the open.</li>
+          </ul>
+        </div>
+        <div>
+          <h2>Honest status</h2>
+          <p class="sub" style="margin-bottom:10px">SecureSuite is in active development.</p>
+          <ul class="plain">
+            <li>The manual testing workflow is solid and interception is verified on the wire.</li>
+            <li>The active scanner is narrow today and growing.</li>
+            <li>No dedicated crawler yet; the site map is built from your traffic.</li>
+          </ul>
+          <p style="margin-top:12px"><a href="https://github.com/secureline-io/securesuite/blob/main/docs/ROADMAP.md">Read the roadmap</a> · <a href="https://github.com/secureline-io/securesuite/issues">Report an issue</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p><b>For authorized security testing only.</b> Use SecureSuite only on systems you own or have written permission to test.</p>
+    <p>SecureSuite is free software under the <a href="https://github.com/secureline-io/securesuite/blob/main/LICENSE">AGPL-3.0</a>. A project by <a href="https://secureline.in">SecureLine</a>.</p>
+  </footer>
+</div>
+</body>
+</html>
