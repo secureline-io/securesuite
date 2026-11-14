@@ -13,7 +13,7 @@ use http_body_util::{BodyExt, Full};
 use hudsucker::hyper::{Request, Response};
 use hudsucker::{Body, HttpContext, HttpHandler, RequestOrResponse};
 
-use crate::model::{Exchange, Header, HeldReq};
+use crate::model::{Exchange, Header, HeldReq, Rule};
 use crate::rules::{apply_text, has_rule, rewrite_headers};
 use crate::store::{Decision, Store};
 
@@ -53,6 +53,38 @@ fn to_body(bytes: Bytes) -> Body {
     Body::from(Full::new(bytes))
 }
 
+/// Body text as the console shows it: lossy, and capped at `MAX_BODY` bytes.
+fn shown(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_BODY)]).into_owned()
+}
+
+/// A `<textarea>` hands its text back with every line end as LF.
+fn lf(s: &str) -> String {
+    s.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// The bytes to send once the console returns `edited` for a held body.
+/// Text that comes back as shown sends the original bytes, so binary and
+/// oversized bodies survive a forward; an edit replaces only the shown part.
+// shortcut: a char split exactly at MAX_BODY is garbled when a larger body is edited; cut `shown` on a char boundary if that ever bites.
+fn edited_bytes(original: &Bytes, edited: &str) -> Bytes {
+    if lf(edited) == lf(&shown(original)) {
+        return original.clone();
+    }
+    let tail = &original[original.len().min(MAX_BODY)..];
+    Bytes::from([edited.as_bytes(), tail].concat())
+}
+
+/// `bytes` after the Match & Replace body rules for `part`; `None` when no rule changed it.
+fn ruled(rules: &[Rule], part: &str, bytes: &Bytes) -> Option<Bytes> {
+    if !has_rule(rules, part) {
+        return None;
+    }
+    let full = String::from_utf8_lossy(bytes);
+    let rewritten = apply_text(rules, part, &full);
+    (rewritten != full).then(|| Bytes::from(rewritten.into_bytes()))
+}
+
 fn now_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -85,6 +117,17 @@ impl HttpHandler for Recorder {
         _ctx: &HttpContext,
         req: Request<Body>,
     ) -> RequestOrResponse {
+        self.on_request(req).await
+    }
+
+    async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
+        self.on_response(res).await
+    }
+}
+
+// The handlers proper; hudsucker's context cannot be built outside its crate, so tests call these.
+impl Recorder {
+    async fn on_request(&mut self, req: Request<Body>) -> RequestOrResponse {
         // CONNECT requests set up the TLS tunnel; hudsucker MITMs them and then
         // delivers the real decrypted requests here. Don't record the tunnel.
         if req.method() == hudsucker::hyper::Method::CONNECT {
@@ -115,7 +158,8 @@ impl HttpHandler for Recorder {
         let mut method = parts.method.to_string();
         let mut url = parts.uri.to_string();
         let mut req_headers = headers_of(&parts.headers);
-        let mut req_body = String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_BODY)]).to_string();
+        let mut out_bytes = bytes.clone();
+        let mut req_body = shown(&bytes);
         let mut edited = false;
 
         // Interception: pause this request until the UI decides.
@@ -143,6 +187,7 @@ impl HttpHandler for Recorder {
                     method = edit.method;
                     url = edit.url;
                     req_headers = edited_headers(&edit.headers);
+                    out_bytes = edited_bytes(&bytes, &edit.body);
                     req_body = edit.body;
                     edited = true;
                 }
@@ -155,19 +200,17 @@ impl HttpHandler for Recorder {
         let url_before = url.clone();
         url = apply_text(&rules, "url", &url);
         let new_headers = rewrite_headers(&rules, "req_header", &req_headers);
-        let new_body = apply_text(&rules, "req_body", &req_body);
+        let ruled_body = ruled(&rules, "req_body", &out_bytes);
         let url_changed = url != url_before;
         let headers_changed = new_headers != req_headers;
-        let body_changed = new_body != req_body;
+        let body_changed = ruled_body.is_some();
         req_headers = new_headers;
-        req_body = new_body;
+        if let Some(b) = ruled_body {
+            req_body = shown(&b);
+            out_bytes = b;
+        }
 
         let modified = edited || url_changed || headers_changed || body_changed;
-        let out_bytes: Bytes = if edited || body_changed {
-            Bytes::from(req_body.clone().into_bytes())
-        } else {
-            bytes.clone()
-        };
 
         self.pending = Some(Pending {
             id: self.store.next_id(),
@@ -198,7 +241,7 @@ impl HttpHandler for Recorder {
         }
     }
 
-    async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
+    async fn on_response(&mut self, res: Response<Body>) -> Response<Body> {
         let (parts, body) = res.into_parts();
         let bytes = body
             .collect()
@@ -220,27 +263,14 @@ impl HttpHandler for Recorder {
         let ruled_headers = rewrite_headers(&rules, "resp_header", &orig_headers);
         let rules_hdr_changed = ruled_headers != orig_headers;
 
-        let (ruled_bytes, ruled_display, rules_body_changed) = if has_rule(&rules, "resp_body") {
-            let full = String::from_utf8_lossy(&bytes).to_string();
-            let rewritten = apply_text(&rules, "resp_body", &full);
-            let changed = rewritten != full;
-            let display: String = rewritten.chars().take(MAX_BODY).collect();
-            (Bytes::from(rewritten.into_bytes()), display, changed)
-        } else {
-            let shown = &bytes[..bytes.len().min(MAX_BODY)];
-            (
-                bytes.clone(),
-                String::from_utf8_lossy(shown).to_string(),
-                false,
-            )
-        };
+        let ruled_body = ruled(&rules, "resp_body", &bytes);
 
         // Response interception: pause the (rule-applied) response for the UI.
         let mut final_status = status;
         let mut final_headers = ruled_headers;
-        let mut final_bytes = ruled_bytes;
-        let mut final_display = ruled_display;
-        let mut changed = rules_hdr_changed || rules_body_changed;
+        let mut changed = rules_hdr_changed || ruled_body.is_some();
+        let mut final_bytes = ruled_body.unwrap_or_else(|| bytes.clone());
+        let mut final_display = shown(&final_bytes);
         let mut dropped = false;
 
         if self.store.intercept_resp() {
@@ -265,8 +295,8 @@ impl HttpHandler for Recorder {
                         final_status = edit.status;
                     }
                     final_headers = edited_headers(&edit.headers);
-                    final_display = edit.body.clone();
-                    final_bytes = Bytes::from(edit.body.into_bytes());
+                    final_bytes = edited_bytes(&final_bytes, &edit.body);
+                    final_display = edit.body;
                     changed = true;
                 }
                 _ => {}
@@ -313,5 +343,106 @@ impl HttpHandler for Recorder {
         } else {
             Response::from_parts(parts, to_body(bytes))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Rule;
+    use crate::store::EditedReq;
+
+    /// Not UTF-8, CRLF line ends, and longer than the console shows.
+    fn binary_body() -> Bytes {
+        let mut b = b"--x\r\n\xff\xfe\x00PNG\r\n".to_vec();
+        b.resize(MAX_BODY + 10, 0x80);
+        Bytes::from(b)
+    }
+
+    /// The console's "Forward": every field goes back as shown, and a
+    /// <textarea> returns its line ends as LF.
+    async fn forward_as_shown(store: &Store) {
+        let held = loop {
+            if let Some(h) = store.held().into_iter().next() {
+                break h;
+            }
+            tokio::task::yield_now().await;
+        };
+        let edit = EditedReq {
+            method: held.method,
+            url: held.url,
+            status: held.status,
+            headers: held
+                .headers
+                .into_iter()
+                .map(|h| (h.name, h.value))
+                .collect(),
+            body: held.body.replace("\r\n", "\n"),
+        };
+        store.resolve(held.hold_id, Decision::Forward(Some(edit)));
+    }
+
+    async fn sent(out: RequestOrResponse) -> Bytes {
+        let RequestOrResponse::Request(req) = out else {
+            panic!("request was not forwarded")
+        };
+        req.into_body().collect().await.unwrap().to_bytes()
+    }
+
+    fn rule(part: &str, pattern: &str, replace: &str) -> Rule {
+        Rule {
+            id: 1,
+            enabled: true,
+            part: part.to_string(),
+            pattern: pattern.to_string(),
+            replace: replace.to_string(),
+            regex: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn untouched_forward_keeps_request_body_bytes() {
+        let store = Arc::new(Store::new());
+        store.set_intercept(true);
+        let mut rec = Recorder::new(store.clone());
+        let req = Request::post("http://t.test/upload")
+            .body(to_body(binary_body()))
+            .unwrap();
+        let (out, ()) = tokio::join!(rec.on_request(req), forward_as_shown(&store));
+        assert!(sent(out).await == binary_body(), "request body changed");
+    }
+
+    #[tokio::test]
+    async fn untouched_forward_keeps_response_body_bytes() {
+        let store = Arc::new(Store::new());
+        store.set_intercept_resp(true);
+        // A body rule that matches nothing must not re-encode the body either.
+        store.set_rules(vec![rule("resp_body", "no-such-text", "x")]);
+        let mut rec = Recorder::new(store.clone());
+        let res = Response::new(to_body(binary_body()));
+        let (out, ()) = tokio::join!(rec.on_response(res), forward_as_shown(&store));
+        let got = out.into_body().collect().await.unwrap().to_bytes();
+        assert!(got == binary_body(), "response body changed");
+    }
+
+    #[test]
+    fn an_edit_replaces_only_the_part_that_was_shown() {
+        let mut body = vec![b'a'; MAX_BODY];
+        body.extend_from_slice(b"TAIL");
+        let out = edited_bytes(&Bytes::from(body), "edited");
+        assert_eq!(&out[..], b"editedTAIL");
+    }
+
+    #[tokio::test]
+    async fn body_rule_rewrites_the_whole_request_body() {
+        let store = Arc::new(Store::new());
+        store.set_rules(vec![rule("req_body", "HEAD", "head")]);
+        let mut rec = Recorder::new(store.clone());
+        let text = |head: &str| format!("{head}{}TAIL", "a".repeat(MAX_BODY));
+        let req = Request::post("http://t.test/big")
+            .body(to_body(Bytes::from(text("HEAD"))))
+            .unwrap();
+        let got = sent(rec.on_request(req).await).await;
+        assert!(got == text("head").as_bytes(), "got {} bytes", got.len());
     }
 }
