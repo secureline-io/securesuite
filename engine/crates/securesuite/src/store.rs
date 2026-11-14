@@ -42,6 +42,9 @@ pub enum WsDecision {
     Drop,
 }
 
+/// Exchanges kept in memory (and reloaded at startup); older ones stay in the DB.
+const MAX_HISTORY: usize = 10_000;
+
 fn kv_get(c: &Connection, key: &str) -> Option<String> {
     c.query_row("SELECT json FROM kv WHERE key=?1", [key], |r| {
         r.get::<_, String>(0)
@@ -92,6 +95,19 @@ impl Store {
     /// Store backed by a SQLite file at `path` (created if missing). History,
     /// scope, rules, and issues are loaded back into memory on open.
     pub fn with_db(path: Option<&Path>) -> Self {
+        // Captured cookies and tokens live in this file: owner-only, like the CA
+        // key, and set before SQLite opens it so its journal files match.
+        #[cfg(unix)]
+        if let Some(p) = path {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            let _ = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .mode(0o600)
+                .open(p);
+            let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600));
+        }
         let db = path.and_then(|p| match Connection::open(p) {
             Ok(c) => {
                 let _ = c.execute_batch(
@@ -117,8 +133,11 @@ impl Store {
         let mut max_issue = 0u64;
 
         if let Some(c) = &db {
-            if let Ok(mut stmt) = c.prepare("SELECT json FROM exchanges ORDER BY id") {
-                if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+            // Newest MAX_HISTORY only; the newest row also carries the max id.
+            if let Ok(mut stmt) = c.prepare(
+                "SELECT json FROM (SELECT id, json FROM exchanges ORDER BY id DESC LIMIT ?1) ORDER BY id",
+            ) {
+                if let Ok(rows) = stmt.query_map([MAX_HISTORY as i64], |r| r.get::<_, String>(0)) {
                     for json in rows.flatten() {
                         if let Ok(ex) = serde_json::from_str::<Exchange>(&json) {
                             max_id = max_id.max(ex.id);
@@ -239,7 +258,14 @@ impl Store {
             ex.resp_body_len,
             ex.duration_ms,
         );
-        self.items.lock().expect("store poisoned").push(ex.clone());
+        {
+            let mut items = self.items.lock().expect("store poisoned");
+            items.push(ex.clone());
+            if items.len() > MAX_HISTORY {
+                let drop = items.len() - MAX_HISTORY;
+                items.drain(..drop);
+            }
+        }
         let _ = self.tx.send(ex); // ignore if no live subscribers
     }
 
@@ -262,6 +288,25 @@ impl Store {
 
     pub fn set_intercept(&self, v: bool) {
         self.intercept.store(v, Ordering::SeqCst);
+        if !v {
+            self.release("request");
+        }
+    }
+
+    fn intercepting(&self, kind: &str) -> bool {
+        if kind == "response" {
+            self.intercept_resp()
+        } else {
+            self.intercept()
+        }
+    }
+
+    /// Forward every held item of `kind` unchanged: once intercept is off,
+    /// nothing in the console will ever resolve them.
+    fn release(&self, kind: &str) {
+        for h in self.held().into_iter().filter(|h| h.kind == kind) {
+            self.resolve(h.hold_id, Decision::Forward(None));
+        }
     }
 
     pub fn intercept(&self) -> bool {
@@ -270,6 +315,9 @@ impl Store {
 
     pub fn set_intercept_resp(&self, v: bool) {
         self.intercept_resp.store(v, Ordering::SeqCst);
+        if !v {
+            self.release("response");
+        }
     }
 
     pub fn intercept_resp(&self) -> bool {
@@ -450,6 +498,11 @@ impl Store {
 
     pub fn set_ws_intercept(&self, v: bool) {
         self.ws_intercept.store(v, Ordering::SeqCst);
+        if !v {
+            for h in self.ws_held() {
+                self.resolve_ws(h.hold_id, WsDecision::Forward(None));
+            }
+        }
     }
 
     pub fn ws_intercept(&self) -> bool {
@@ -467,6 +520,9 @@ impl Store {
             .expect("store poisoned")
             .insert(hold_id, tx);
         self.ws_held.lock().expect("store poisoned").push(frame);
+        if !self.ws_intercept() {
+            self.resolve_ws(hold_id, WsDecision::Forward(None));
+        }
         (hold_id, rx)
     }
 
@@ -506,7 +562,12 @@ impl Store {
             .lock()
             .expect("store poisoned")
             .insert(hold_id, tx);
+        let kind = req.kind.clone();
         self.held.lock().expect("store poisoned").push(req);
+        // Intercept was switched off between the caller's check and this hold.
+        if !self.intercepting(&kind) {
+            self.resolve(hold_id, Decision::Forward(None));
+        }
         (hold_id, rx)
     }
 
@@ -532,5 +593,136 @@ impl Store {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn held(kind: &str) -> HeldReq {
+        HeldReq {
+            hold_id: 0,
+            kind: kind.into(),
+            method: "GET".into(),
+            url: "http://h/".into(),
+            status: 0,
+            headers: vec![],
+            body: String::new(),
+        }
+    }
+
+    // status 0 keeps the passive scanner out of these tests.
+    fn ex(id: u64) -> Exchange {
+        Exchange {
+            id,
+            ts_ms: 0,
+            method: "GET".into(),
+            url: format!("http://h/{id}"),
+            host: "h".into(),
+            scheme: "http".into(),
+            status: 0,
+            mime: String::new(),
+            req_headers: vec![],
+            req_body: String::new(),
+            req_body_len: 0,
+            resp_headers: vec![],
+            resp_body: String::new(),
+            resp_body_len: 0,
+            duration_ms: 0,
+        }
+    }
+
+    #[test]
+    fn turning_intercept_off_releases_only_that_kind() {
+        let s = Store::new();
+        s.set_intercept(true);
+        s.set_intercept_resp(true);
+        let (_, mut req) = s.hold(held("request"));
+        let (_, mut resp) = s.hold(held("response"));
+        s.set_intercept(false);
+        assert!(matches!(req.try_recv(), Ok(Decision::Forward(None))));
+        assert!(resp.try_recv().is_err(), "responses stay held");
+        assert_eq!(s.held().len(), 1);
+        s.set_intercept_resp(false);
+        assert!(matches!(resp.try_recv(), Ok(Decision::Forward(None))));
+        assert!(s.held().is_empty());
+    }
+
+    #[test]
+    fn a_hold_that_races_intercept_off_is_released() {
+        let s = Store::new();
+        let (_, mut req) = s.hold(held("request"));
+        assert!(matches!(req.try_recv(), Ok(Decision::Forward(None))));
+        assert!(s.held().is_empty());
+    }
+
+    #[test]
+    fn turning_ws_intercept_off_releases_held_frames() {
+        let s = Store::new();
+        s.set_ws_intercept(true);
+        let (_, mut rx) = s.hold_ws(HeldWs {
+            hold_id: 0,
+            dir: "c2s".into(),
+            host: "h".into(),
+            opcode: "text".into(),
+            text: "x".into(),
+            editable: true,
+        });
+        s.set_ws_intercept(false);
+        assert!(matches!(rx.try_recv(), Ok(WsDecision::Forward(None))));
+        assert!(s.ws_held().is_empty());
+    }
+
+    #[test]
+    fn history_keeps_only_the_newest_exchanges() {
+        let s = Store::new();
+        for id in 1..=MAX_HISTORY as u64 + 1 {
+            s.push(ex(id));
+        }
+        let all = s.all();
+        assert_eq!(all.len(), MAX_HISTORY);
+        assert_eq!(all[0].id, 2);
+        assert!(s.get(1).is_none());
+    }
+
+    #[test]
+    fn history_db_is_owner_only_and_reloads_only_the_newest() {
+        let dir = std::env::temp_dir().join(format!("ss-store-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("history.db");
+        {
+            // An existing database, created with default permissions.
+            let mut c = Connection::open(&path).unwrap();
+            c.execute_batch("CREATE TABLE exchanges (id INTEGER PRIMARY KEY, json TEXT NOT NULL);")
+                .unwrap();
+            let t = c.transaction().unwrap();
+            for id in 1..=MAX_HISTORY as u64 + 1 {
+                t.execute(
+                    "INSERT INTO exchanges (id, json) VALUES (?1, ?2)",
+                    rusqlite::params![id as i64, serde_json::to_string(&ex(id)).unwrap()],
+                )
+                .unwrap();
+            }
+            t.commit().unwrap();
+        }
+        let s = Store::with_db(Some(&path));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let all = s.all();
+        assert_eq!(all.len(), MAX_HISTORY);
+        assert_eq!(all[0].id, 2);
+        assert_eq!(
+            s.next_id(),
+            MAX_HISTORY as u64 + 2,
+            "new ids never overwrite old rows"
+        );
+        drop(s);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

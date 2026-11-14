@@ -1131,12 +1131,16 @@ fn url_decode(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         match b[i] {
-            b'%' if i + 3 <= b.len() => match u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                Ok(v) => {
+            // Bytes, not a str slice: a multi-byte char after '%' must not panic.
+            b'%' if i + 3 <= b.len() => match std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+            {
+                Some(v) => {
                     out.push(v);
                     i += 3;
                 }
-                Err(_) => {
+                None => {
                     out.push(b'%');
                     i += 1;
                 }
@@ -1159,13 +1163,18 @@ fn hex_decode(s: &str) -> String {
     if clean.len() % 2 != 0 {
         return "<invalid hex: odd length>".to_string();
     }
-    match (0..clean.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&clean[i..i + 2], 16))
-        .collect::<Result<Vec<u8>, _>>()
+    match clean
+        .as_bytes()
+        .chunks(2)
+        .map(|p| {
+            std::str::from_utf8(p)
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+        })
+        .collect::<Option<Vec<u8>>>()
     {
-        Ok(v) => String::from_utf8_lossy(&v).to_string(),
-        Err(_) => "<invalid hex>".to_string(),
+        Some(v) => String::from_utf8_lossy(&v).to_string(),
+        None => "<invalid hex>".to_string(),
     }
 }
 
@@ -1323,6 +1332,13 @@ mod tests {
         // port (a dev server, the practice lab) must be refused too.
         upgrade[4] = ("origin", "http://127.0.0.1:1");
         assert_eq!(status(url, &upgrade).await, 403, "another local app");
+    }
+
+    #[test]
+    fn decoders_survive_multibyte_input() {
+        assert_eq!(url_decode("%41%aé"), "A%aé");
+        assert_eq!(hex_decode("4142"), "AB");
+        assert_eq!(hex_decode("aéb"), "<invalid hex>");
     }
 
     #[test]

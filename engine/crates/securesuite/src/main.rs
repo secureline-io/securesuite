@@ -65,6 +65,9 @@ async fn main() -> anyhow::Result<()> {
     // Web UI/API server (loopback).
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        // A silent target must not hang Repeater or pin an Intruder/Discover slot.
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .build()?;
     web::spawn_extension_dispatcher(store.clone(), client.clone());
     let app = web::router(WebState {
