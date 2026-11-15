@@ -1,6 +1,6 @@
 #!/bin/bash
-# SecureSuite.app launcher: start the bundled engine, open the console in the
-# default browser, and keep the app process alive while the engine runs.
+# SecureSuite.app launcher: start the bundled engine, show the console in the
+# app's own window, and stop the engine when that window closes.
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA="$HOME/.securesuite"
@@ -43,15 +43,24 @@ stop_engine() {
 trap stop_engine EXIT
 trap 'exit 0' TERM INT HUP
 
-# Wait for the UI to come up (max ~10s), then open it.
+# Wait for the UI to come up (max ~10s).
+UP=0
 for _ in $(seq 1 40); do
   kill -0 "$ENGINE_PID" 2>/dev/null || break
   if curl -s "http://127.0.0.1:${UI_PORT}" >/dev/null 2>&1; then
-    open "http://127.0.0.1:${UI_PORT}" 2>/dev/null || true
+    UP=1
     break
   fi
   sleep 0.25
 done
+
+# Show the console in SecureSuite's own window; closing it quits the app.
+# Without the window binary, fall back to the default browser.
+if [ "$UP" = 1 ] && [ -x "$DIR/securesuite-window" ]; then
+  "$DIR/securesuite-window" "$UI_PORT"
+  exit 0
+fi
+[ "$UP" = 1 ] && { open "http://127.0.0.1:${UI_PORT}" 2>/dev/null || true; }
 
 wait "$ENGINE_PID"
 STATUS=$?
@@ -62,6 +71,7 @@ If a port is already in use (Burp uses 8080), put different ports in
 $DATA/env, for example:
 SECURESUITE_PROXY_PORT=8086
 SECURESUITE_UI_PORT=8087
+SECURESUITE_OAST_PORT=8088
 Full log: $LOG"
 fi
 exit "$STATUS"

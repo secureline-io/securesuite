@@ -24,6 +24,9 @@ pub struct WebState {
     pub client: reqwest::Client,
     pub proxy_port: u16,
     pub oast_port: u16,
+    /// SPKI pin of the CA key, for the built-in browser.
+    pub browser_pin: String,
+    pub data_dir: std::path::PathBuf,
 }
 
 pub fn router(state: WebState) -> Router {
@@ -36,6 +39,7 @@ pub fn router(state: WebState) -> Router {
         .route("/api/log", get(log_list))
         .route("/api/ws", get(ws_handler))
         .route("/api/ca.pem", get(ca_pem))
+        .route("/api/browser", post(open_browser))
         .route("/api/intercept", get(intercept_status).post(set_intercept))
         .route("/api/intercept/queue", get(intercept_queue))
         .route("/api/intercept/resolve", post(resolve_hold))
@@ -117,6 +121,16 @@ async fn info(State(s): State<WebState>) -> Json<serde_json::Value> {
         "oast_port": s.oast_port,
         "version": env!("CARGO_PKG_VERSION"),
     }))
+}
+
+/// Open the built-in testing browser (proxied, CA-trusting, own profile).
+async fn open_browser(State(s): State<WebState>) -> Response {
+    match crate::browser::launch(&s.data_dir, s.proxy_port, &s.browser_pin) {
+        Ok(exe) => {
+            Json(serde_json::json!({ "browser": exe.display().to_string() })).into_response()
+        }
+        Err(e) => (StatusCode::SERVICE_UNAVAILABLE, e.to_string()).into_response(),
+    }
 }
 
 async fn list(State(s): State<WebState>) -> Json<Vec<Exchange>> {
@@ -1270,6 +1284,8 @@ mod tests {
             client: reqwest::Client::new(),
             proxy_port: 0,
             oast_port: 0,
+            browser_pin: String::new(),
+            data_dir: std::path::PathBuf::new(),
         });
         tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await });
         addr

@@ -2,6 +2,7 @@
 //! web UI/API, sharing one in-memory exchange store.
 
 mod active;
+mod browser;
 mod comparer;
 mod model;
 mod proxy;
@@ -56,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let data_dir = PathBuf::from(home).join(".securesuite");
     let (ca_cert_pem, ca_key_pem) = load_or_make_ca(&data_dir)?;
 
+    let browser_pin = browser::spki_pin(&ca_key_pem)?;
     let key_pair = KeyPair::from_pem(&ca_key_pem)?;
     let issuer = Issuer::from_ca_cert_pem(&ca_cert_pem, key_pair)?;
     let ca = RcgenAuthority::new(issuer, 1_000, aws_lc_rs::default_provider());
@@ -76,6 +78,8 @@ async fn main() -> anyhow::Result<()> {
         client,
         proxy_port,
         oast_port,
+        browser_pin,
+        data_dir: data_dir.clone(),
     });
     let listener = tokio::net::TcpListener::bind(ui_addr).await?;
     tokio::spawn(async move {

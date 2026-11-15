@@ -3,6 +3,8 @@
 [workspace]
 resolver = "2"
 members = ["engine/crates/*"]
+# The desktop window is its own workspace (it needs GUI system libraries).
+exclude = ["desktop"]
 
 [workspace.package]
 version = "0.1.0"

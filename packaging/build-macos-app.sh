@@ -7,16 +7,19 @@ cd "$ROOT"
 
 echo "==> cargo build --release -p securesuite"
 cargo build --release -p securesuite
+echo "==> cargo build --release (desktop window)"
+cargo build --release --manifest-path desktop/Cargo.toml
 
 APP="$ROOT/dist/SecureSuite.app"
 echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/target/release/securesuite" "$APP/Contents/MacOS/securesuite-engine"
+cp "$ROOT/desktop/target/release/securesuite-desktop" "$APP/Contents/MacOS/securesuite-window"
 cp "$ROOT/packaging/launcher.sh"      "$APP/Contents/MacOS/SecureSuite"
 cp "$ROOT/packaging/Info.plist"       "$APP/Contents/Info.plist"
 cp "$ROOT/packaging/SecureSuite.icns" "$APP/Contents/Resources/SecureSuite.icns"
-chmod +x "$APP/Contents/MacOS/SecureSuite" "$APP/Contents/MacOS/securesuite-engine"
+chmod +x "$APP/Contents/MacOS/SecureSuite" "$APP/Contents/MacOS/securesuite-engine" "$APP/Contents/MacOS/securesuite-window"
 
 # Mark the directory as a bundle package and (re)register it so Finder shows the
 # app icon immediately instead of a generic folder.
