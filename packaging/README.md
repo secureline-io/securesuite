@@ -19,8 +19,10 @@ all three on native runners and uploads artifacts on every `v*` tag.
 
 Produces `dist/SecureSuite.app` and `dist/SecureSuite.dmg`. Double-click the app
 (or mount the DMG and drag it to `/Applications`): it launches the engine and
-opens the console at <http://127.0.0.1:8081>. Not yet notarized — first launch:
-**right-click → Open**, or `xattr -dr com.apple.quarantine dist/SecureSuite.app`.
+opens the console at <http://127.0.0.1:8081>. Not yet notarized, so the first
+launch is blocked. Open it once, then **System Settings → Privacy & Security →
+Open Anyway** (macOS 15+ removed the right-click → Open bypass), or run
+`xattr -dr com.apple.quarantine /Applications/SecureSuite.app`.
 
 ## Linux (.tar.gz + .deb)
 
