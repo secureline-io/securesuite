@@ -1,0 +1,22 @@
+# Native app window for the SecureSuite console. Its own workspace, so the
+# engine and its CI build without GUI system libraries (WebKitGTK on Linux).
+[package]
+name = "securesuite-desktop"
+description = "SecureSuite desktop window: shows the console in a native app window."
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["SecureSuite Contributors"]
+repository = "https://github.com/secureline-io/securesuite"
+
+[dependencies]
+muda = "0.21.2"
+tao = "0.37.2"
+wry = "0.57.2"
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1
+
+[workspace]

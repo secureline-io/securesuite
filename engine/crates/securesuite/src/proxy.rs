@@ -134,7 +134,13 @@ impl Recorder {
             return req.into();
         }
 
-        let (parts, body) = req.into_parts();
+        let (mut parts, body) = req.into_parts();
+        // Ask for plain bodies so responses can be read, edited and rule-rewritten;
+        // a compressed body would show as garbage and break once edited.
+        // shortcut: a server that compresses anyway still shows raw bytes; decode gzip/br then.
+        parts
+            .headers
+            .remove(hudsucker::hyper::header::ACCEPT_ENCODING);
         let bytes = body
             .collect()
             .await
@@ -431,6 +437,22 @@ mod tests {
         body.extend_from_slice(b"TAIL");
         let out = edited_bytes(&Bytes::from(body), "edited");
         assert_eq!(&out[..], b"editedTAIL");
+    }
+
+    #[tokio::test]
+    async fn upstream_is_asked_for_uncompressed_bodies() {
+        let store = Arc::new(Store::new());
+        let mut rec = Recorder::new(store.clone());
+        let req = Request::get("http://t.test/")
+            .header("accept-encoding", "gzip, deflate, br, zstd")
+            .body(to_body(Bytes::new()))
+            .unwrap();
+        let RequestOrResponse::Request(out) = rec.on_request(req).await else {
+            panic!("request was not forwarded")
+        };
+        assert!(out.headers().get("accept-encoding").is_none());
+        let shown = &rec.pending.as_ref().unwrap().req_headers;
+        assert!(!shown.iter().any(|h| h.name == "accept-encoding"));
     }
 
     #[tokio::test]

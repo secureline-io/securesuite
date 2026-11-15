@@ -87,6 +87,7 @@
     <span class="sub" id="count">0 requests</span>
     <div class="spacer"></div>
     <input id="filter" class="filter" placeholder="filter: method / host / url…" />
+    <button id="browserBtn" class="accent" title="Open a browser that already routes through SecureSuite and trusts its CA">Open Browser</button>
     <button id="interceptBtn">Intercept req: off</button>
     <button id="interceptRespBtn">resp: off</button>
     <button id="repeaterBtn">Repeater</button>
@@ -678,6 +679,10 @@ $('#rulesBtn').onclick=openRules;
 $('#issuesBtn').onclick=openIssues;
 $('#scopeBtn').onclick=editScope;
 $('#caBtn').onclick=()=>location.href='/api/ca.pem';
+$('#browserBtn').onclick=async()=>{
+  try{ const r=await fetch('/api/browser',{method:'POST'}); if(!r.ok) alert(await r.text()); }
+  catch(e){ alert('Could not open the browser: '+e); }
+};
 $('#exportBtn').onclick=()=>location.href='/api/export';
 $('#obCa').onclick=()=>location.href='/api/ca.pem';
 $('#obCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText($('#obProxy').textContent.trim()); $('#obCopy').textContent='copied'; setTimeout(()=>$('#obCopy').textContent='copy',1200); }catch{} };

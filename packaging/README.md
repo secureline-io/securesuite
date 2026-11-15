@@ -19,7 +19,10 @@ all three on native runners and uploads artifacts on every `v*` tag.
 
 Produces `dist/SecureSuite.app` and `dist/SecureSuite.dmg`. Double-click the app
 (or mount the DMG and drag it to `/Applications`): it launches the engine and
-opens the console at <http://127.0.0.1:8081>. Not yet notarized, so the first
+shows the console in its own window (the `desktop/` crate, system WebView);
+closing the window quits the app. **Open Browser** in the console starts an
+installed Chrome, Edge, Brave or Chromium in a separate profile that already
+routes through the proxy and trusts the SecureSuite CA. Not yet notarized, so the first
 launch is blocked. Open it once, then **System Settings → Privacy & Security →
 Open Anyway** (macOS 15+ removed the right-click → Open bypass), or run
 `xattr -dr com.apple.quarantine /Applications/SecureSuite.app`.
